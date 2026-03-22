@@ -1,6 +1,6 @@
 [package]
 name = "procmod-layout-derive"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Derive macro for procmod-layout struct mapping"
 license = "MIT"

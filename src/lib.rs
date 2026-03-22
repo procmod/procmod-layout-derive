@@ -20,6 +20,14 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, LitInt, Meta};
 /// - `#[offset(N)]` - byte offset from base address (required on every field)
 /// - `#[pointer_chain(a, b, ...)]` - intermediate pointer offsets to follow before reading
 ///
+/// # Safety requirement
+///
+/// All field types must be valid for any bit pattern. Numeric primitives (`u8`,
+/// `u32`, `f32`, etc.), fixed-size arrays of numeric types, and `#[repr(C)]`
+/// structs composed of such types are safe. Types with validity invariants
+/// (`bool`, `char`, enums, references) must not be used - read them as their
+/// underlying integer type instead (e.g., `u8` for booleans).
+///
 /// # Example
 ///
 /// ```ignore
