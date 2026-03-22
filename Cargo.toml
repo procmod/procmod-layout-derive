@@ -1,0 +1,17 @@
+[package]
+name = "procmod-layout-derive"
+version = "1.0.0"
+edition = "2021"
+description = "Derive macro for procmod-layout struct mapping"
+license = "MIT"
+repository = "https://github.com/procmod/procmod-layout-derive"
+keywords = ["derive", "macro", "game", "modding", "memory"]
+categories = ["game-development"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
