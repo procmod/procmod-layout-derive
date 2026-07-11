@@ -160,7 +160,13 @@ fn parse_pointer_chain_attr(field: &syn::Field) -> syn::Result<Option<Vec<u64>>>
 fn gen_direct_read(ty: &syn::Type, offset: u64) -> proc_macro2::TokenStream {
     let offset_lit = LitInt::new(&format!("{offset}"), Span::call_site());
     quote! {
-        unsafe { __procmod_process.read::<#ty>(__procmod_base + #offset_lit)? }
+        unsafe {
+            __procmod_process.read::<#ty>(
+                __procmod_base
+                    .checked_add(#offset_lit)
+                    .ok_or(::procmod_layout::Error::AddressOverflow)?,
+            )?
+        }
     }
 }
 
@@ -177,7 +183,11 @@ fn gen_pointer_chain_read(
     let first_var = syn::Ident::new("__ptr_0", Span::call_site());
     steps.push(quote! {
         let #first_var: usize = unsafe {
-            __procmod_process.read::<usize>(__procmod_base + #base_offset_lit)?
+            __procmod_process.read::<usize>(
+                __procmod_base
+                    .checked_add(#base_offset_lit)
+                    .ok_or(::procmod_layout::Error::AddressOverflow)?,
+            )?
         };
     });
 
@@ -189,7 +199,11 @@ fn gen_pointer_chain_read(
         let offset_lit = LitInt::new(&format!("{offset}"), Span::call_site());
         steps.push(quote! {
             let #next_var: usize = unsafe {
-                __procmod_process.read::<usize>(#prev_var + #offset_lit)?
+                __procmod_process.read::<usize>(
+                    #prev_var
+                        .checked_add(#offset_lit)
+                        .ok_or(::procmod_layout::Error::AddressOverflow)?,
+                )?
             };
         });
     }
@@ -201,7 +215,13 @@ fn gen_pointer_chain_read(
     quote! {
         {
             #(#steps)*
-            unsafe { __procmod_process.read::<#ty>(#final_var + #final_offset_lit)? }
+            unsafe {
+                __procmod_process.read::<#ty>(
+                    #final_var
+                        .checked_add(#final_offset_lit)
+                        .ok_or(::procmod_layout::Error::AddressOverflow)?,
+                )?
+            }
         }
     }
 }
