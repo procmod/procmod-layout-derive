@@ -12,7 +12,7 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, LitInt, Meta};
 /// The generated method signature is:
 ///
 /// ```ignore
-/// pub fn read(process: &procmod_layout::Process, base: usize) -> procmod_layout::Result<Self>
+/// pub fn read<C: Capability>(process: &Process<C>, base: Address) -> Result<Self>
 /// ```
 ///
 /// # Attributes
@@ -97,9 +97,9 @@ fn impl_game_struct(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream
     Ok(quote! {
         impl #impl_generics #name #ty_generics #where_clause {
             /// Reads this struct from a remote process's memory at the given base address.
-            pub fn read(
-                __procmod_process: &::procmod_layout::Process,
-                __procmod_base: usize,
+            pub fn read<__ProcmodCapability: ::procmod_layout::Capability>(
+                __procmod_process: &::procmod_layout::Process<__ProcmodCapability>,
+                __procmod_base: ::procmod_layout::Address,
             ) -> ::procmod_layout::Result<Self> {
                 Ok(Self {
                     #(#field_reads),*
@@ -161,10 +161,8 @@ fn gen_direct_read(ty: &syn::Type, offset: u64) -> proc_macro2::TokenStream {
     let offset_lit = LitInt::new(&format!("{offset}"), Span::call_site());
     quote! {
         unsafe {
-            __procmod_process.read::<#ty>(
-                __procmod_base
-                    .checked_add(#offset_lit)
-                    .ok_or(::procmod_layout::Error::AddressOverflow)?,
+            __procmod_process.read_at::<#ty>(
+                __procmod_base.checked_add(#offset_lit)?,
             )?
         }
     }
@@ -182,13 +180,10 @@ fn gen_pointer_chain_read(
     // read initial pointer
     let first_var = syn::Ident::new("__ptr_0", Span::call_site());
     steps.push(quote! {
-        let #first_var: usize = unsafe {
-            __procmod_process.read::<usize>(
-                __procmod_base
-                    .checked_add(#base_offset_lit)
-                    .ok_or(::procmod_layout::Error::AddressOverflow)?,
-            )?
-        };
+        let #first_var: ::procmod_layout::Address =
+            __procmod_process.read_pointer(
+                __procmod_base.checked_add(#base_offset_lit)?,
+            )?;
     });
 
     // follow intermediate pointers (all except last offset)
@@ -198,13 +193,10 @@ fn gen_pointer_chain_read(
         let next_var = syn::Ident::new(&format!("__ptr_{}", i + 1), Span::call_site());
         let offset_lit = LitInt::new(&format!("{offset}"), Span::call_site());
         steps.push(quote! {
-            let #next_var: usize = unsafe {
-                __procmod_process.read::<usize>(
-                    #prev_var
-                        .checked_add(#offset_lit)
-                        .ok_or(::procmod_layout::Error::AddressOverflow)?,
-                )?
-            };
+            let #next_var: ::procmod_layout::Address =
+                __procmod_process.read_pointer(
+                    #prev_var.checked_add(#offset_lit)?,
+                )?;
         });
     }
 
@@ -216,10 +208,8 @@ fn gen_pointer_chain_read(
         {
             #(#steps)*
             unsafe {
-                __procmod_process.read::<#ty>(
-                    #final_var
-                        .checked_add(#final_offset_lit)
-                        .ok_or(::procmod_layout::Error::AddressOverflow)?,
+                __procmod_process.read_at::<#ty>(
+                    #final_var.checked_add(#final_offset_lit)?,
                 )?
             }
         }
