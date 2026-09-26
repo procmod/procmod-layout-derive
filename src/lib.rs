@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::quote;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 use syn::{parse_macro_input, Data, DeriveInput, Fields, LitInt, Meta};
 
 /// Derives a `read` method that maps a remote process's memory into a Rust struct.
@@ -20,12 +21,11 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, LitInt, Meta};
 /// - `#[offset(N)]` - byte offset from base address (required on every field)
 /// - `#[pointer_chain(a, b, ...)]` - intermediate pointer offsets to follow before reading
 ///
-/// # Safety requirement
+/// # Field types
 ///
-/// All field types must be valid for any bit pattern. Numeric primitives (`u8`,
-/// `u32`, `f32`, etc.), fixed-size arrays of numeric types, and `#[repr(C)]`
-/// structs composed of such types are safe. Types with validity invariants
-/// (`bool`, `char`, enums, references) must not be used - read them as their
+/// Every field type must implement `AnyBitPattern`, so any bytes in remote memory
+/// form a valid value. This is checked at compile time. Types with validity
+/// invariants (`bool`, `char`, enums, references) are rejected; read them as their
 /// underlying integer type instead (e.g., `u8` for booleans).
 ///
 /// # Example
@@ -159,12 +159,10 @@ fn parse_pointer_chain_attr(field: &syn::Field) -> syn::Result<Option<Vec<u64>>>
 
 fn gen_direct_read(ty: &syn::Type, offset: u64) -> proc_macro2::TokenStream {
     let offset_lit = LitInt::new(&format!("{offset}"), Span::call_site());
-    quote! {
-        unsafe {
-            __procmod_process.read_at::<#ty>(
-                __procmod_base.checked_add(#offset_lit)?,
-            )?
-        }
+    quote_spanned! {ty.span()=>
+        __procmod_process.read::<#ty>(
+            __procmod_base.checked_add(#offset_lit)?,
+        )?
     }
 }
 
@@ -203,15 +201,16 @@ fn gen_pointer_chain_read(
     // read final value at last chain offset
     let final_var = syn::Ident::new(&format!("__ptr_{last_idx}"), Span::call_site());
     let final_offset_lit = LitInt::new(&format!("{}", chain[last_idx]), Span::call_site());
+    let final_read = quote_spanned! {ty.span()=>
+        __procmod_process.read::<#ty>(
+            #final_var.checked_add(#final_offset_lit)?,
+        )?
+    };
 
     quote! {
         {
             #(#steps)*
-            unsafe {
-                __procmod_process.read_at::<#ty>(
-                    #final_var.checked_add(#final_offset_lit)?,
-                )?
-            }
+            #final_read
         }
     }
 }
